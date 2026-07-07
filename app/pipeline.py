@@ -9,7 +9,6 @@ import ffmpeg
 from .transcribe import transcribe
 from .diarize import diarize
 from .merge import merge
-from .vad import detect_speech
 from .db import AUDIO_DIR, save_transcription
 
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -29,7 +28,8 @@ async def run_pipeline(
     async def emit(event: dict) -> None:
         await job["queue"].put(event)
 
-    wav_path = audio_path + ".wav"
+    wav_path = audio_path + ".wav"            # loudnorm'd — for VAD + Whisper
+    diar_wav_path = audio_path + ".diar.wav"  # un-normalized — for diarization
 
     try:
         job["status"] = "processing"
@@ -39,20 +39,24 @@ async def run_pipeline(
         # noise floor, where Whisper hears "silence" and hallucinates filler
         # like "Thank you" / "Yeah" on a loop. loudnorm (EBU R128) lifts quiet
         # speech to a consistent level and leaves already-normal audio intact.
+        #
+        # Diarization gets a SEPARATE, un-normalized 16 kHz mono WAV. loudnorm's
+        # time-varying gain compresses the level differences between speakers and
+        # pumps up the noise floor / cross-talk between turns, which degrades
+        # pyannote's speaker embeddings and can swap or merge speaker labels.
+        # Both files share the same sample count (loudnorm changes amplitude, not
+        # timing), so word and turn timestamps stay on one absolute axis for merge.
         await emit({"stage": "normalizing", "pct": 5, "message": "Normalizing audio..."})
-        await loop.run_in_executor(
-            _executor,
-            lambda: (
-                ffmpeg.input(audio_path)
-                .output(wav_path, ar=16000, ac=1, af="loudnorm=I=-16:TP=-1.5:LRA=11")
-                .run(quiet=True, overwrite_output=True)
-            ),
-        )
 
-        # Detect speech regions up front. Whisper then only decodes these,
-        # which is what stops it hallucinating filler over silence/noise.
-        await emit({"stage": "detecting", "pct": 8, "message": "Detecting speech..."})
-        speech_regions = await loop.run_in_executor(_executor, detect_speech, wav_path)
+        def _prepare_audio() -> None:
+            ffmpeg.input(audio_path).output(
+                wav_path, ar=16000, ac=1, af="loudnorm=I=-16:TP=-1.5:LRA=11"
+            ).run(quiet=True, overwrite_output=True)
+            ffmpeg.input(audio_path).output(
+                diar_wav_path, ar=16000, ac=1
+            ).run(quiet=True, overwrite_output=True)
+
+        await loop.run_in_executor(_executor, _prepare_audio)
 
         await emit({"stage": "processing", "pct": 10, "message": "Starting transcription and diarization..."})
 
@@ -63,9 +67,9 @@ async def run_pipeline(
             job["whisper_progress"] = frac
 
         transcribe_future = loop.run_in_executor(
-            _executor, transcribe, wav_path, speech_regions, _on_whisper_progress,
+            _executor, transcribe, wav_path, _on_whisper_progress,
         )
-        diarize_future = loop.run_in_executor(_executor, diarize, wav_path, min_speakers, max_speakers)
+        diarize_future = loop.run_in_executor(_executor, diarize, diar_wav_path, min_speakers, max_speakers)
 
         # Poll often enough that the bar feels live without flooding the SSE stream.
         pending = {transcribe_future, diarize_future}
@@ -109,11 +113,12 @@ async def run_pipeline(
         await emit({"stage": "error", "message": str(exc)})
 
     finally:
-        # WAV is always temporary; audio_path may have been moved to AUDIO_DIR.
-        try:
-            os.unlink(wav_path)
-        except OSError:
-            pass
+        # WAVs are always temporary; audio_path may have been moved to AUDIO_DIR.
+        for tmp_wav in (wav_path, diar_wav_path):
+            try:
+                os.unlink(tmp_wav)
+            except OSError:
+                pass
         if os.path.exists(audio_path):
             try:
                 os.unlink(audio_path)

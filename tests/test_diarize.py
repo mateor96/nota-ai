@@ -46,3 +46,34 @@ def test_two_real_speakers_kept_one_phantom_dropped():
     ]
     out = _drop_phantom_speakers(turns)
     assert {t["speaker"] for t in out} == {"S1", "S3"}
+
+
+def test_quiet_but_real_speaker_with_many_turns_is_kept():
+    # Regression: a quiet interviewer speaks only ~48s of a 20-min call (<5% of
+    # talk time) but across many short, dispersed turns. Pruning by share alone
+    # erased them wholesale onto the dominant speaker — "wrong person" for every
+    # question. The turn-count gate must keep them.
+    turns = []
+    t = 0.0
+    for _ in range(20):
+        turns.append({"start": t, "end": t + 56.0, "speaker": "A"})   # dominant, long turns
+        t += 56.0
+        turns.append({"start": t, "end": t + 2.4, "speaker": "B"})    # brief interjection
+        t += 2.4
+    # B: 20 turns * 2.4s = 48s over a ~1168s call (~4.1%, below the 5% floor),
+    # but 20 turns >> _MAX_PHANTOM_TURNS, so B is a real speaker and survives.
+    out = _drop_phantom_speakers(turns)
+    assert {t["speaker"] for t in out} == {"A", "B"}
+    assert out == turns          # nothing relabeled
+
+
+def test_sparse_low_share_cluster_still_pruned():
+    # The turn-count gate must not neuter real phantom removal: a 1-2 turn blip
+    # that is also below the time floor is still an artifact and gets folded.
+    turns = [
+        {"start": 0.0,   "end": 600.0, "speaker": "A"},
+        {"start": 600.0, "end": 603.0, "speaker": "NOISE"},   # 3s, 1 turn
+        {"start": 603.0, "end": 900.0, "speaker": "B"},
+    ]
+    out = _drop_phantom_speakers(turns)
+    assert {t["speaker"] for t in out} == {"A", "B"}
