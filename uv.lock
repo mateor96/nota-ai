@@ -8,80 +8,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "34-transcription-app"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "fastapi" },
-    { name = "ffmpeg-python" },
-    { name = "httpx" },
-    { name = "huggingface-hub" },
-    { name = "keyring" },
-    { name = "mlx-whisper" },
-    { name = "onnxruntime" },
-    { name = "pyannote-audio" },
-    { name = "python-multipart" },
-    { name = "sse-starlette" },
-    { name = "torchaudio" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-anthropic = [
-    { name = "anthropic" },
-]
-cloud = [
-    { name = "anthropic" },
-    { name = "google-genai" },
-    { name = "openai" },
-]
-dev = [
-    { name = "anthropic" },
-    { name = "google-genai" },
-    { name = "openai" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "respx" },
-]
-gemini = [
-    { name = "google-genai" },
-]
-openai = [
-    { name = "openai" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40" },
-    { name = "anthropic", marker = "extra == 'cloud'", specifier = ">=0.40" },
-    { name = "anthropic", marker = "extra == 'dev'", specifier = ">=0.40" },
-    { name = "fastapi" },
-    { name = "ffmpeg-python" },
-    { name = "google-genai", marker = "extra == 'cloud'", specifier = ">=1.0" },
-    { name = "google-genai", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "google-genai", marker = "extra == 'gemini'", specifier = ">=1.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "huggingface-hub" },
-    { name = "keyring", specifier = ">=24.0" },
-    { name = "mlx-whisper", specifier = ">=0.4.0" },
-    { name = "onnxruntime" },
-    { name = "openai", marker = "extra == 'cloud'", specifier = ">=1.0" },
-    { name = "openai", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0" },
-    { name = "pyannote-audio", specifier = ">=4.0,<5" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "python-multipart", specifier = ">=0.0.28" },
-    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
-    { name = "sse-starlette" },
-    { name = "torchaudio", specifier = ">=2.8.0" },
-    { name = "uvicorn", extras = ["standard"] },
-]
-provides-extras = ["gemini", "anthropic", "openai", "cloud", "dev"]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1187,6 +1113,80 @@ sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/c9/b2622292ea83fbb4ec318f5b9ab867d0a28ab43c5717bb85b0a5f6b3b0a4/networkx-3.6.1-py3-none-any.whl", hash = "sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762", size = 2068504, upload-time = "2025-12-08T17:02:38.159Z" },
 ]
+
+[[package]]
+name = "nota-ai"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "fastapi" },
+    { name = "ffmpeg-python" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "keyring" },
+    { name = "mlx-whisper" },
+    { name = "onnxruntime" },
+    { name = "pyannote-audio" },
+    { name = "python-multipart" },
+    { name = "sse-starlette" },
+    { name = "torchaudio" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+anthropic = [
+    { name = "anthropic" },
+]
+cloud = [
+    { name = "anthropic" },
+    { name = "google-genai" },
+    { name = "openai" },
+]
+dev = [
+    { name = "anthropic" },
+    { name = "google-genai" },
+    { name = "openai" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "respx" },
+]
+gemini = [
+    { name = "google-genai" },
+]
+openai = [
+    { name = "openai" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40" },
+    { name = "anthropic", marker = "extra == 'cloud'", specifier = ">=0.40" },
+    { name = "anthropic", marker = "extra == 'dev'", specifier = ">=0.40" },
+    { name = "fastapi" },
+    { name = "ffmpeg-python" },
+    { name = "google-genai", marker = "extra == 'cloud'", specifier = ">=1.0" },
+    { name = "google-genai", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "google-genai", marker = "extra == 'gemini'", specifier = ">=1.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "huggingface-hub" },
+    { name = "keyring", specifier = ">=24.0" },
+    { name = "mlx-whisper", specifier = ">=0.4.0" },
+    { name = "onnxruntime" },
+    { name = "openai", marker = "extra == 'cloud'", specifier = ">=1.0" },
+    { name = "openai", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0" },
+    { name = "pyannote-audio", specifier = ">=4.0,<5" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "python-multipart", specifier = ">=0.0.28" },
+    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
+    { name = "sse-starlette" },
+    { name = "torchaudio", specifier = ">=2.8.0" },
+    { name = "uvicorn", extras = ["standard"] },
+]
+provides-extras = ["gemini", "anthropic", "openai", "cloud", "dev"]
 
 [[package]]
 name = "numba"
