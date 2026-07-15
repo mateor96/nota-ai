@@ -4,6 +4,7 @@ from typing import AsyncGenerator
 
 import httpx
 
+from . import MAX_OUTPUT_TOKENS
 from .exceptions import ProviderAuthError, ProviderModelError, ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -37,11 +38,7 @@ class LMStudioService:
         payload: dict = {
             "messages": [{"role": "user", "content": prompt}],
             "stream": True,
-            # Reasoning models ("thinking" models like Qwen3) spend most of their
-            # output budget on chain-of-thought before writing the answer. A small
-            # cap gets exhausted mid-thought, so the answer never arrives. Give
-            # them ample room; non-reasoning models stop early and don't use it.
-            "max_tokens": 8192,
+            "max_tokens": MAX_OUTPUT_TOKENS,
             "temperature": 0.3,
         }
         if self.model:

@@ -1,7 +1,8 @@
 import logging
 from typing import AsyncGenerator
 
-from .exceptions import ProviderAuthError, ProviderUnavailableError
+from . import MAX_OUTPUT_TOKENS
+from .exceptions import ProviderAuthError, ProviderError, ProviderModelError, ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,23 @@ class GeminiService:
 
     async def stream_chat(self, prompt: str) -> AsyncGenerator[str, None]:
         try:
+            yielded_content = False
             async for chunk in self._client.aio.models.generate_content_stream(
-                model=self._model, contents=prompt
+                model=self._model,
+                contents=prompt,
+                config={"max_output_tokens": MAX_OUTPUT_TOKENS, "temperature": 0.3},
             ):
                 if chunk.text:
+                    yielded_content = True
                     yield chunk.text
+            # Don't return a blank summary silently — explain why.
+            if not yielded_content:
+                raise ProviderModelError(
+                    "The model returned an empty response.",
+                    provider=self.provider_name(),
+                )
+        except ProviderError:
+            raise
         except Exception as e:
             msg = str(e)
             if "API_KEY" in msg.upper() or "401" in msg or "403" in msg:

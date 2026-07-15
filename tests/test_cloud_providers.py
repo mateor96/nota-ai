@@ -48,7 +48,7 @@ class TestAnthropic:
 
     def test_default_model_uses_haiku_4_5(self):
         svc = AnthropicService(api_key="sk-test")
-        assert svc._model == "claude-haiku-4-5-20251001"
+        assert svc._model == "claude-haiku-4-5"
 
     def test_explicit_model_is_used(self):
         svc = AnthropicService(api_key="sk-test", model="claude-opus-4-7")
@@ -73,6 +73,20 @@ class TestAnthropic:
 
         tokens = [t async for t in svc.stream_chat("transcript")]
         assert tokens == ["He", "llo"]
+
+    async def test_empty_stream_raises_model_error(self):
+        from app.services.exceptions import ProviderModelError
+        svc = AnthropicService(api_key="sk-test")
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(
+            return_value=SimpleNamespace(text_stream=_AsyncIter([]))
+        )
+        stream_cm.__aexit__ = AsyncMock(return_value=None)
+        svc._client = MagicMock()
+        svc._client.messages.stream = MagicMock(return_value=stream_cm)
+
+        with pytest.raises(ProviderModelError, match="empty response"):
+            [_ async for _ in svc.stream_chat("transcript")]
 
     async def test_stream_chat_maps_auth_error(self):
         import anthropic
@@ -118,6 +132,38 @@ class TestOpenAI:
         tokens = [t async for t in svc.stream_chat("transcript")]
         assert tokens == ["A", "B"]
 
+    async def test_reasoning_model_omits_temperature(self):
+        svc = OpenAIService(api_key="sk-test", model="gpt-5-mini")
+        chunk = SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))])
+        svc._client = MagicMock()
+        svc._client.chat.completions.create = AsyncMock(return_value=_AsyncIter([chunk]))
+
+        [_ async for _ in svc.stream_chat("transcript")]
+
+        kwargs = svc._client.chat.completions.create.call_args.kwargs
+        assert "temperature" not in kwargs
+        assert "max_completion_tokens" in kwargs
+        assert "max_tokens" not in kwargs
+
+    async def test_non_reasoning_model_keeps_temperature(self):
+        svc = OpenAIService(api_key="sk-test", model="gpt-4o-mini")
+        chunk = SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="ok"))])
+        svc._client = MagicMock()
+        svc._client.chat.completions.create = AsyncMock(return_value=_AsyncIter([chunk]))
+
+        [_ async for _ in svc.stream_chat("transcript")]
+
+        assert svc._client.chat.completions.create.call_args.kwargs["temperature"] == 0.3
+
+    async def test_empty_stream_raises_model_error(self):
+        from app.services.exceptions import ProviderModelError
+        svc = OpenAIService(api_key="sk-test")
+        svc._client = MagicMock()
+        svc._client.chat.completions.create = AsyncMock(return_value=_AsyncIter([]))
+
+        with pytest.raises(ProviderModelError):
+            [_ async for _ in svc.stream_chat("transcript")]
+
     async def test_stream_chat_maps_auth_error(self):
         import openai
         svc = OpenAIService(api_key="sk-test")
@@ -161,6 +207,18 @@ class TestGemini:
         )
         tokens = [t async for t in svc.stream_chat("transcript")]
         assert tokens == ["Hello", " world"]
+
+    async def test_empty_stream_raises_model_error(self):
+        from app.services.exceptions import ProviderModelError
+        svc = GeminiService(api_key="abc")
+        svc._client = MagicMock()
+        svc._client.aio = MagicMock()
+        svc._client.aio.models = MagicMock()
+        svc._client.aio.models.generate_content_stream = MagicMock(
+            return_value=_AsyncIter([])
+        )
+        with pytest.raises(ProviderModelError, match="empty response"):
+            [_ async for _ in svc.stream_chat("transcript")]
 
     async def test_stream_chat_maps_api_key_error(self):
         svc = GeminiService(api_key="abc")

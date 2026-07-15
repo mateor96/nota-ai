@@ -4,6 +4,33 @@ from .lmstudio import LMStudioService
 from .ollama import OllamaService
 from .openai_svc import OpenAIService
 
+# Single source of truth for the cloud-provider model pickers (served via
+# /models). Local providers (LM Studio, Ollama) are queried live instead.
+CLOUD_MODELS = {
+    "anthropic": [
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-5",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+    ],
+    "openai": [
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4o",
+        "gpt-4o-mini",
+    ],
+    "gemini": [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+    ],
+}
+
 PROMPT_TEMPLATES = {
     "meeting": """You are a meeting assistant. Below is a meeting transcript with speaker labels and timestamps.
 

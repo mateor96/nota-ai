@@ -4,6 +4,7 @@ from typing import AsyncGenerator
 
 import httpx
 
+from . import MAX_OUTPUT_TOKENS
 from .exceptions import ProviderModelError, ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class OllamaService:
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": True,
-            "options": {"temperature": 0.3},
+            "options": {"temperature": 0.3, "num_predict": MAX_OUTPUT_TOKENS},
         }
 
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=5.0)
