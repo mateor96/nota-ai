@@ -1,7 +1,10 @@
 import asyncio
 import json
+import logging
 import mimetypes
+import os
 import tempfile
+import time
 
 import httpx
 
@@ -23,19 +26,39 @@ from .db import (
 from .export import to_json, to_markdown, to_srt, to_txt
 from .pipeline import run_pipeline
 from .services.exceptions import ProviderAuthError, ProviderError, ProviderModelError, ProviderUnavailableError
-from .services.factory import COMBINE_PROMPT, build_summary_prompt, format_transcript, get_summarizer
+from .services.factory import CLOUD_MODELS, COMBINE_PROMPT, build_summary_prompt, format_transcript, get_summarizer
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app):
+    # Uvicorn only configures its own loggers; give the app's loggers a
+    # handler so pipeline/provider errors reach the terminal.
+    logging.basicConfig(level=logging.INFO)
     await init_db()
     yield
 
 
 app = FastAPI(title="Transcription App", lifespan=lifespan)
 
-# In-memory job store: job_id → {status, queue, result}
+# In-memory job store: job_id → {status, queue, result, finished_at}.
+# Finished jobs are kept briefly so the client can fetch /result, then
+# evicted — the transcript is already persisted in the archive.
 jobs: dict = {}
+JOB_TTL_S = 3600
+
+# Server-side cap; the UI advertises a 90-minute maximum, which fits well
+# under this even at high bitrates.
+MAX_UPLOAD_BYTES = 2 * 1024**3
+
+
+def _purge_stale_jobs() -> None:
+    now = time.monotonic()
+    for job_id, job in list(jobs.items()):
+        finished_at = job.get("finished_at")
+        if finished_at is not None and now - finished_at > JOB_TTL_S:
+            del jobs[job_id]
 
 
 @app.post("/transcribe")
@@ -45,14 +68,27 @@ async def start_transcribe(
     min_speakers: Optional[int] = Query(default=None),
     max_speakers: Optional[int] = Query(default=None),
 ):
+    _purge_stale_jobs()
     job_id = str(uuid.uuid4())
 
     suffix = Path(file.filename).suffix or ".audio"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    tmp.write(await file.read())
-    tmp.close()
+    received = 0
+    try:
+        # Stream to disk in chunks — a 90-minute recording shouldn't be
+        # buffered whole in RAM.
+        while chunk := await file.read(1024 * 1024):
+            received += len(chunk)
+            if received > MAX_UPLOAD_BYTES:
+                tmp.close()
+                os.unlink(tmp.name)
+                return JSONResponse({"error": "file too large"}, status_code=413)
+            tmp.write(chunk)
+    finally:
+        if not tmp.closed:
+            tmp.close()
 
-    jobs[job_id] = {"status": "queued", "queue": asyncio.Queue(), "result": None}
+    jobs[job_id] = {"status": "queued", "queue": asyncio.Queue(), "result": None, "finished_at": None}
     background_tasks.add_task(
         run_pipeline, job_id, tmp.name, jobs, min_speakers, max_speakers, file.filename
     )
@@ -242,40 +278,13 @@ def _is_embedding_model(model_id: str) -> bool:
     return "embed" in lower or "embedding" in lower
 
 
-_CLOUD_MODELS = {
-    "anthropic": [
-        "claude-opus-4-7",
-        "claude-sonnet-4-6",
-        "claude-haiku-4-5-20251001",
-        "claude-sonnet-4-5",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022",
-    ],
-    "openai": [
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-4.1",
-        "gpt-4.1-mini",
-        "gpt-4o",
-        "gpt-4o-mini",
-    ],
-    "gemini": [
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-    ],
-}
-
-
 @app.post("/models")
 async def list_models(body: dict):
     provider = body.get("provider", "")
     base_url = (body.get("base_url") or "").rstrip("/")
 
-    if provider in _CLOUD_MODELS:
-        return {"models": _CLOUD_MODELS[provider]}
+    if provider in CLOUD_MODELS:
+        return {"models": CLOUD_MODELS[provider]}
 
     if provider == "lmstudio":
         url = base_url or "http://localhost:1234"
@@ -396,8 +405,10 @@ async def summarize_entry(entry_id: str):
             await save_summary(entry_id, summary)
             yield {"data": json.dumps({"type": "done", "summary": summary})}
         except ProviderError as e:
+            logger.warning("Summarization failed for %s via %s: %s", entry_id, e.provider, e)
             yield {"data": json.dumps({"type": "error", "message": str(e)})}
         except Exception as e:
+            logger.exception("Unexpected error summarizing %s", entry_id)
             yield {"data": json.dumps({"type": "error", "message": f"Unexpected error: {e}"})}
 
     return EventSourceResponse(stream())
