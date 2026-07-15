@@ -1,6 +1,8 @@
 import asyncio
+import logging
 import os
 import shutil
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -10,6 +12,8 @@ from .transcribe import transcribe
 from .diarize import diarize
 from .merge import merge
 from .db import AUDIO_DIR, save_transcription
+
+logger = logging.getLogger(__name__)
 
 _executor = ThreadPoolExecutor(max_workers=4)
 
@@ -28,7 +32,7 @@ async def run_pipeline(
     async def emit(event: dict) -> None:
         await job["queue"].put(event)
 
-    wav_path = audio_path + ".wav"            # loudnorm'd — for VAD + Whisper
+    wav_path = audio_path + ".wav"            # loudnorm'd — for Whisper
     diar_wav_path = audio_path + ".diar.wav"  # un-normalized — for diarization
 
     try:
@@ -58,36 +62,16 @@ async def run_pipeline(
 
         await loop.run_in_executor(_executor, _prepare_audio)
 
-        await emit({"stage": "processing", "pct": 10, "message": "Starting transcription and diarization..."})
+        await emit({"stage": "processing", "pct": 10, "message": "Transcribing..."})
 
-        # Transcribe reports 0..1 progress here from a worker thread; the poll
-        # loop below reads it and forwards real progress to the SSE stream.
-        job["whisper_progress"] = 0.0
-        def _on_whisper_progress(frac: float) -> None:
-            job["whisper_progress"] = frac
-
-        transcribe_future = loop.run_in_executor(
-            _executor, transcribe, wav_path, _on_whisper_progress,
-        )
+        # The single-pass Whisper decode exposes no fine-grained progress, so
+        # the bar holds at 10% during transcription and jumps to 80% once only
+        # diarization (running concurrently) remains.
+        transcribe_future = loop.run_in_executor(_executor, transcribe, wav_path)
         diarize_future = loop.run_in_executor(_executor, diarize, diar_wav_path, min_speakers, max_speakers)
 
-        # Poll often enough that the bar feels live without flooding the SSE stream.
-        pending = {transcribe_future, diarize_future}
-        last_pct = 10
-        while pending:
-            done, pending = await asyncio.wait(pending, timeout=1.5)
-            if not pending:
-                break
-            whisper_done = transcribe_future not in pending
-            # 10..80% reserved for transcription; jump to 80 once it's done and
-            # only diarization remains.
-            pct = 80 if whisper_done else 10 + int(job["whisper_progress"] * 70)
-            message = "Identifying speakers..." if whisper_done else "Transcribing..."
-            if pct != last_pct:
-                await emit({"stage": "processing", "pct": pct, "message": message})
-                last_pct = pct
-
         whisper_result = await transcribe_future
+        await emit({"stage": "processing", "pct": 80, "message": "Identifying speakers..."})
         diarization_turns = await diarize_future
 
         await emit({"stage": "merging", "pct": 90, "message": "Merging transcription and speakers..."})
@@ -109,10 +93,12 @@ async def run_pipeline(
         await emit({"stage": "done", "pct": 100, "message": "Done!"})
 
     except Exception as exc:
+        logger.exception("Pipeline failed for job %s (%s)", job_id, filename)
         job["status"] = "error"
         await emit({"stage": "error", "message": str(exc)})
 
     finally:
+        job["finished_at"] = time.monotonic()
         # WAVs are always temporary; audio_path may have been moved to AUDIO_DIR.
         for tmp_wav in (wav_path, diar_wav_path):
             try:

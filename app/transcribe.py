@@ -16,7 +16,7 @@ per-segment confidence filter drops any residual noise-hallucination afterwards.
 """
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Optional
 
 import mlx_whisper
 from mlx_whisper.audio import SAMPLE_RATE, load_audio
@@ -77,7 +77,6 @@ def _keep_segment(seg: dict) -> bool:
 
 def transcribe(
     audio_path: str,
-    progress_cb: Optional[Callable[[float], None]] = None,
     model: str = DEFAULT_MODEL,
     language: Optional[str] = None,
     initial_prompt: Optional[str] = None,
@@ -95,6 +94,4 @@ def transcribe(
     )
 
     segments = [seg for seg in result.get("segments", []) if _keep_segment(seg)]
-    if progress_cb:
-        progress_cb(1.0)
     return {"segments": segments, "language": result.get("language", language)}

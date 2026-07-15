@@ -1,11 +1,11 @@
-"""Voice Activity Detection — the backbone of the pipeline.
+"""Voice Activity Detection — used only by the eval harness (`app.eval --vad`).
 
-Whisper hallucinates filler ("Thank you", "Yeah", "Let's go" on a loop) when
-fed silence or noise — this is a property of the model, not a tuning bug, so
-the only robust fix is to never feed it non-speech. VAD finds the real speech
-regions once; transcription then only decodes those windows. Empirically this
-cut hallucinated output ~97% on a near-silent recording while making
-transcription faster (the silence is skipped).
+An earlier pipeline design gated transcription on these speech regions, but
+per-window decoding degraded Whisper's accuracy and was reverted (see the
+module docstring in app/transcribe.py). VAD remains useful as a *measurement*:
+eval.py compares word timestamps against detected speech regions to flag words
+transcribed over silence (hallucinations) and speech that produced no words
+(dropped audio).
 
 Uses pyannote/segmentation-3.0, the same model family already pulled in for
 diarization, so no extra download.

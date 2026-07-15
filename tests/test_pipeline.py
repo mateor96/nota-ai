@@ -46,7 +46,7 @@ def stub_pipeline(monkeypatch):
 
     monkeypatch.setattr(pipeline_module.ffmpeg, "input", lambda src: _FfmpegChain(src))
 
-    monkeypatch.setattr(pipeline_module, "transcribe", lambda wav, progress_cb=None: {"segments": []})
+    monkeypatch.setattr(pipeline_module, "transcribe", lambda wav: {"segments": []})
     monkeypatch.setattr(pipeline_module, "diarize",    lambda wav, mn, mx: [])
     monkeypatch.setattr(pipeline_module, "merge",      lambda w, d: [
         {"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0, "text": "hi", "words": []},
@@ -139,7 +139,7 @@ async def test_pipeline_audio_ext_from_recorded_filename(initialized_db, stub_pi
 
 async def test_pipeline_failure_deletes_source_and_skips_db_write(initialized_db, stub_pipeline, make_audio, monkeypatch):
     src = make_audio("input.mp3")
-    monkeypatch.setattr(pipeline_module, "transcribe", lambda wav, progress_cb=None: (_ for _ in ()).throw(RuntimeError("MLX exploded")))
+    monkeypatch.setattr(pipeline_module, "transcribe", lambda wav: (_ for _ in ()).throw(RuntimeError("MLX exploded")))
 
     jobs = {"job1": {"status": "queued", "queue": asyncio.Queue(), "result": None}}
     await run_pipeline("job1", src, jobs, None, None, filename="x.mp3")
