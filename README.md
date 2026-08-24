@@ -15,7 +15,7 @@ Handles any audio — meetings, phone calls, voice memos, interviews — without
 ## Features
 
 - **Transcription** via Whisper Large v3 Turbo — runs on the M-series GPU through Apple MLX
-- **Robust on quiet & noisy audio** — voice-activity detection (pyannote segmentation-3.0) feeds only real speech to Whisper, so silence no longer produces hallucinated "Thank you / Yeah" filler loops; language is detected once and pinned across the recording
+- **Robust on quiet & noisy audio** — Whisper decodes the recording in one continuous pass, and voice-activity detection (pyannote segmentation-3.0) guards it at both ends: the decode starts and stops at the real speech, so minutes of dead air can't seed a hallucinated "Thank you / Yeah" filler loop, and any loop that still forms over silence is detected and re-decoded from the point speech actually resumes. Language is detected once, from the middle of the speech, and pinned across the recording
 - **Speaker diarization** via pyannote community-1 — separates and labels each speaker, with phantom (sub-5%-share) clusters auto-pruned so the speaker count stays right
 - **LLM summarization** — one-click meeting summaries via your choice of model:
   - *Local:* LM Studio, Ollama
@@ -117,13 +117,13 @@ API keys are stored in the macOS Keychain (service: `nota.ai`). Audio and transc
 
 | Layer | Choice |
 |---|---|
-| Transcription | `mlx-whisper` + `mlx-community/whisper-large-v3-turbo`, VAD-gated |
+| Transcription | `mlx-whisper` + `mlx-community/whisper-large-v3-turbo`, one continuous pass, VAD-bounded |
 | Speech detection (VAD) | `pyannote/segmentation-3.0` |
 | Diarization | `pyannote/speaker-diarization-community-1` |
 | Backend | FastAPI + uvicorn + SSE |
 | Storage | SQLite via `aiosqlite` (`~/.transcribe/archive.db`) |
 | Frontend | Vanilla HTML/JS |
-| Audio pipeline | ffmpeg (loudnorm → 16 kHz mono WAV) → VAD → Whisper |
+| Audio pipeline | ffmpeg (loudnorm → 16 kHz mono WAV) → VAD (decode bounds) → Whisper |
 
 ---
 
