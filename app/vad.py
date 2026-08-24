@@ -1,22 +1,34 @@
-"""Voice Activity Detection — used only by the eval harness (`app.eval --vad`).
+"""Voice Activity Detection — pyannote/segmentation-3.0.
 
-An earlier pipeline design gated transcription on these speech regions, but
-per-window decoding degraded Whisper's accuracy and was reverted (see the
-module docstring in app/transcribe.py). VAD remains useful as a *measurement*:
-eval.py compares word timestamps against detected speech regions to flag words
-transcribed over silence (hallucinations) and speech that produced no words
-(dropped audio).
+Two consumers:
 
-Uses pyannote/segmentation-3.0, the same model family already pulled in for
-diarization, so no extra download.
+1. app/pipeline.py runs this over the normalized WAV and hands the regions to
+   app/transcribe.py. Transcription uses them ONLY to (a) place the start and
+   end of the single continuous decode and (b) tell a silence-seeded
+   hallucination loop apart from audio that genuinely repeats. The interior of
+   the audio is never sliced and every word still comes out of one continuous
+   `condition_on_previous_text=True` pass — the reverted per-window design (see
+   the module docstring in app/transcribe.py) is NOT coming back.
+
+2. app/eval.py compares word timestamps against these regions to flag words
+   transcribed over silence and speech that produced no words.
+
+Uses the same model family already pulled in for diarization, so no extra
+download.
 """
 from __future__ import annotations
+
+import threading
 
 import torch
 from pyannote.audio import Model
 from pyannote.audio.pipelines import VoiceActivityDetection
 
 _vad: VoiceActivityDetection | None = None
+# The pipeline calls detect_speech from a shared thread pool with no per-job
+# concurrency limit, so two jobs can race the lazy init and load the model
+# twice (wasted memory, duplicated MPS allocation).
+_vad_lock = threading.Lock()
 
 # Tuned for ASR gating, not maximal precision:
 #  - keep short backchannels ("ja", "yeah") so we don't drop real speech
@@ -28,7 +40,9 @@ _MIN_DURATION_OFF = 0.50
 
 def _get_vad() -> VoiceActivityDetection:
     global _vad
-    if _vad is None:
+    with _vad_lock:
+        if _vad is not None:
+            return _vad
         model = Model.from_pretrained("pyannote/segmentation-3.0")
         pipeline = VoiceActivityDetection(segmentation=model)
         pipeline.instantiate(
@@ -37,7 +51,7 @@ def _get_vad() -> VoiceActivityDetection:
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         pipeline.to(device)
         _vad = pipeline
-    return _vad
+        return _vad
 
 
 def detect_speech(audio_path: str) -> list[tuple[float, float]]:
