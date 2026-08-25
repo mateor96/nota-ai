@@ -130,10 +130,10 @@ API keys are stored in the macOS Keychain (service: `nota.ai`). Audio and transc
 ## Development
 
 ```bash
-uv run pytest                # run the test suite
-python -m app.eval           # score archived transcripts for quality issues
-python -m app.eval --vad     # ...also measure VAD coverage (reads the audio)
-python -m app.eval --baseline quality.json   # save a baseline, then flag regressions on later runs
+uv run pytest                         # run the test suite
+uv run python -m app.eval             # score archived transcripts for quality issues
+uv run python -m app.eval --vad       # ...also measure VAD coverage (reads the audio)
+uv run python -m app.eval --baseline quality.json   # save a baseline, then flag regressions on later runs
 ```
 
 `app.eval` is a reference-free quality check: with no ground-truth transcript it
